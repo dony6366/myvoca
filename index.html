@@ -16,10 +16,31 @@
       <div class="streak-badge" id="streak">🔥 0일</div>
     </div>
 
+    <!-- 첫 진입 레벨 테스트 (온보딩) -->
+    <section class="screen" id="onboard">
+      <div id="ob-body">
+        <div class="card" style="text-align:center">
+          <div style="font-size:44px">👋</div>
+          <h2 style="margin:10px 0 6px">환영해요!</h2>
+          <p style="color:var(--sub);font-size:14px;line-height:1.7">
+            딱 <b>5문제</b>로 지금 실력을 확인하고<br />
+            학습 난이도를 맞춰드릴게요.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="startOnboard()">레벨 테스트 시작 (1분)</button>
+        <div class="section-title">테스트 없이 직접 고르기</div>
+        <div class="mode-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <button class="mode-btn" onclick="pickLevel('beginner')"><span class="mi">🌱</span>Beginner</button>
+          <button class="mode-btn" onclick="pickLevel('elementary')"><span class="mi">🌿</span>Elementary</button>
+          <button class="mode-btn" onclick="pickLevel('intermediate')"><span class="mi">🌳</span>Intermediate</button>
+        </div>
+      </div>
+    </section>
+
     <!-- 홈 -->
     <section class="screen active" id="home">
       <div class="hero">
-        <div class="sub">오늘의 학습</div>
+        <div class="sub" id="home-hello">오늘의 학습</div>
         <div class="big" id="home-due">복습할 단어를 불러오는 중...</div>
         <div class="sub" id="home-diff">매일 10개씩, 꾸준함이 실력이 돼요</div>
       </div>
@@ -33,10 +54,11 @@
       <button class="btn btn-mint" onclick="startPron()">🎤 발음 연습하기</button>
       <div class="section-title">더 학습하기</div>
       <div class="mode-grid">
+        <button class="mode-btn" onclick="startShadow()"><span class="mi">🎧</span>섀도잉</button>
+        <button class="mode-btn" onclick="startAI()"><span class="mi">🤖</span>AI 회화</button>
         <button class="mode-btn" onclick="startGrammar()"><span class="mi">📝</span>문법 카드</button>
         <button class="mode-btn" onclick="showPhrases()"><span class="mi">🗣️</span>상황별 표현</button>
         <button class="mode-btn" onclick="startLevelTest()"><span class="mi">📏</span>어휘력 측정</button>
-        <button class="mode-btn" onclick="startAI()"><span class="mi">🤖</span>AI 회화</button>
       </div>
     </section>
 
@@ -114,6 +136,25 @@
       <div id="lt-result-body"></div>
     </section>
 
+    <!-- 섀도잉 -->
+    <section class="screen" id="shadow">
+      <div style="display:flex;gap:8px;margin-bottom:12px" id="shadow-levels"></div>
+      <div class="card">
+        <div class="q-type" style="text-align:center">잘 듣고 리듬까지 따라 말해보세요</div>
+        <div class="pron-example">
+          <div id="shadow-en" style="font-weight:700"></div>
+          <div class="ko" id="shadow-ko"></div>
+        </div>
+        <button class="speak-btn" style="display:block;margin:0 auto 20px" onclick="speak(shadowCur.en)">🔊 원어민 발음 듣기</button>
+        <button class="mic-btn" id="shadow-mic" onclick="listenShadow()">🎤</button>
+        <div class="mic-hint">마이크를 누르고 위 문장을 따라 말해보세요</div>
+        <div id="shadow-result"></div>
+      </div>
+      <button class="btn btn-primary" onclick="nextShadow()">다음 문장 →</button>
+      <div style="height:10px"></div>
+      <button class="btn btn-ghost" onclick="show('home')">홈으로</button>
+    </section>
+
     <!-- AI 회화: 키 설정 -->
     <section class="screen" id="ai-setup">
       <div class="card">
@@ -148,7 +189,7 @@
         <button class="speak-btn" style="margin:0;font-size:13px" onclick="show('ai-sits')">← 나가기</button>
       </div>
       <div class="chat-box" id="ai-messages"></div>
-      <button class="btn btn-ghost" style="margin:12px 0" onclick="feedbackAI()">📋 내 영어 피드백 받기</button>
+      <button class="btn btn-ghost" style="margin:12px 0" onclick="feedbackAI()">🏁 대화 마치기 (교정 + 격려)</button>
       <div class="chat-input-row">
         <button class="chat-mic" id="ai-mic" onclick="micAI()">🎤</button>
         <input class="chat-input" id="ai-input" placeholder="영어로 말해보세요..." />
@@ -186,6 +227,7 @@
   <script src="grammar.js"></script>
   <script src="phrases.js"></script>
   <script src="leveltest.js"></script>
+  <script src="shadowing.js"></script>
   <script src="app.js"></script>
   <script>
     // 인터넷에 올렸을 때(https) 홈 화면 설치·오프라인 사용이 가능하도록 등록

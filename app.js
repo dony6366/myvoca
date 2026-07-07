@@ -29,16 +29,31 @@ function todayStr(offset = 0) {
 
 function todayRec() {
   const t = todayStr();
-  if (!state.days[t]) state.days[t] = { q: 0, right: 0, pron: 0, g: 0, ph: 0 };
+  if (!state.days[t]) state.days[t] = { q: 0, right: 0, pron: 0, g: 0, ph: 0, sh: 0 };
   const rec = state.days[t];
   if (rec.g === undefined) rec.g = 0;   // 예전 버전 기록 호환
   if (rec.ph === undefined) rec.ph = 0;
+  if (rec.sh === undefined) rec.sh = 0;
   return rec;
 }
 
-// 하루 총 활동량 (문제 + 발음 + 문법 + 표현)
+// 하루 총 활동량 (문제 + 발음 + 문법 + 표현 + 섀도잉)
 function dayTotal(d) {
-  return d.q + d.pron + (d.g || 0) + (d.ph || 0);
+  return d.q + d.pron + (d.g || 0) + (d.ph || 0) + (d.sh || 0);
+}
+
+// ===== 사용자 레벨 =====
+const USER_LEVELS = {
+  beginner: { label: "Beginner (초급)", short: "🌱 Beginner" },
+  elementary: { label: "Elementary (초중급)", short: "🌿 Elementary" },
+  intermediate: { label: "Intermediate (중급)", short: "🌳 Intermediate" },
+};
+function setUserLevel(code) {
+  state.userLevel = { code, label: USER_LEVELS[code].label, date: todayStr() };
+  saveState();
+}
+function userLevelCode() {
+  return state.userLevel ? state.userLevel.code : "elementary";
 }
 
 // ===== SRS =====
@@ -148,6 +163,74 @@ function renderHome() {
     acc === null
       ? "매일 10개씩, 꾸준함이 실력이 돼요"
       : `최근 정답률 ${Math.round(acc * 100)}% — 난이도 자동 조절: ${diff.label}`;
+
+  // 사용자 레벨 표시
+  document.getElementById("home-hello").textContent = state.userLevel
+    ? `오늘의 학습 · ${USER_LEVELS[state.userLevel.code].short}`
+    : "오늘의 학습";
+}
+
+// ===== 첫 진입 레벨 테스트 (온보딩) =====
+let ob = null;
+
+function startOnboard() {
+  // 레벨 1~5에서 한 문제씩, 쉬운 것부터
+  const queue = [];
+  for (let lv = 1; lv <= 5; lv++) {
+    const pool = LEVEL_TEST.filter((x) => x.level === lv);
+    queue.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  ob = { queue, idx: 0, correct: 0 };
+  renderOB();
+}
+
+function renderOB() {
+  const q = ob.queue[ob.idx];
+  const body = document.getElementById("ob-body");
+  body.innerHTML = `
+    <div style="text-align:right;color:var(--sub);font-size:13px;font-weight:700">${ob.idx + 1} / 5</div>
+    <div class="progress-bar"><div style="width:${(ob.idx / 5) * 100}%"></div></div>
+    <div class="card">
+      <div class="q-prompt">
+        <div class="q-type">다음 단어의 뜻은?</div>
+        <div class="q-word">${q.w}</div>
+      </div>
+      <div class="choices" id="ob-choices"></div>
+    </div>`;
+  shuffle([q.m, ...q.x]).forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = c;
+    btn.onclick = () => {
+      if (c === q.m) ob.correct++;
+      ob.idx++;
+      if (ob.idx >= 5) finishOB();
+      else renderOB();
+    };
+    document.getElementById("ob-choices").appendChild(btn);
+  });
+}
+
+function finishOB() {
+  const code = ob.correct <= 2 ? "beginner" : ob.correct <= 4 ? "elementary" : "intermediate";
+  setUserLevel(code);
+  const lv = USER_LEVELS[code];
+  document.getElementById("ob-body").innerHTML = `
+    <div class="card" style="text-align:center">
+      <div style="font-size:44px">${code === "beginner" ? "🌱" : code === "elementary" ? "🌿" : "🌳"}</div>
+      <div style="color:var(--sub);margin-top:8px">당신의 레벨은</div>
+      <h2 style="margin:6px 0;color:var(--accent)">${lv.label}</h2>
+      <p style="color:var(--sub);font-size:14px;line-height:1.7">
+        섀도잉 문장 길이와 AI 회화 난이도를<br />이 레벨에 맞춰드릴게요.
+        틀려도 괜찮아요 — 실력이 늘면 언제든 다시 측정할 수 있어요!
+      </p>
+    </div>
+    <button class="btn btn-primary" onclick="show('home')">학습 시작하기</button>`;
+}
+
+function pickLevel(code) {
+  setUserLevel(code);
+  show("home");
 }
 
 // ===== 퀴즈 =====
@@ -668,7 +751,8 @@ function finishLT() {
   const label = LT_LABELS[attained];
   const size = LT_SIZES[attained];
   state.levelTest = { date: todayStr(), label, size, correct: lt.correct };
-  saveState();
+  // 상세 측정 결과로 사용자 레벨도 갱신 (섀도잉·AI 회화 난이도에 반영)
+  setUserLevel(attained <= 1 ? "beginner" : attained <= 3 ? "elementary" : "intermediate");
 
   const bars = lt.correct.map((c, i) => `
     <div class="box-bar">
@@ -690,6 +774,115 @@ function finishLT() {
     <div style="height:10px"></div>
     <button class="btn btn-ghost" onclick="show('home')">홈으로</button>`;
   show("lt-result");
+}
+
+// ===== 섀도잉 =====
+let shadowCur = null;
+let shadowLv = 2;
+
+function startShadow() {
+  // 사용자 레벨에 맞는 문장 길이로 시작
+  const map = { beginner: 1, elementary: 2, intermediate: 3 };
+  shadowLv = map[userLevelCode()];
+  renderShadowLevels();
+  nextShadow();
+  show("shadow");
+}
+
+function renderShadowLevels() {
+  const names = { 1: "초급 (5~7단어)", 2: "초중급 (8~10단어)", 3: "중급 (11단어~)" };
+  const wrap = document.getElementById("shadow-levels");
+  wrap.innerHTML = "";
+  [1, 2, 3].forEach((lv) => {
+    const btn = document.createElement("button");
+    btn.className = "pill " + (lv === shadowLv ? "pill-accent" : "");
+    btn.style.cssText = "border:none;cursor:pointer;font-family:inherit;padding:8px 12px;" +
+      (lv === shadowLv ? "" : "background:#e4e6f0;color:var(--sub);");
+    btn.textContent = names[lv];
+    btn.onclick = () => { shadowLv = lv; renderShadowLevels(); nextShadow(); };
+    wrap.appendChild(btn);
+  });
+}
+
+function nextShadow() {
+  const pool = SHADOW.filter((s) => s.lv === shadowLv && s !== shadowCur);
+  shadowCur = pool[Math.floor(Math.random() * pool.length)];
+  document.getElementById("shadow-en").textContent = shadowCur.en;
+  document.getElementById("shadow-ko").textContent = shadowCur.ko;
+  document.getElementById("shadow-result").innerHTML = "";
+}
+
+// 정확도(70%) + 말한 속도·리듬(30%)을 합쳐 별점 1~5개로 채점
+function scoreShadow(target, heard, durSec) {
+  const acc = similarity(target, heard);
+  const words = target.split(/\s+/).length;
+  const expected = words * 0.42 + 0.3; // 자연스러운 발화의 예상 길이(초)
+  let tempoScore = 100;
+  let tempoMsg = "";
+  if (durSec > 0) {
+    const ratio = durSec / expected;
+    if (ratio < 0.6) { tempoScore = 60; tempoMsg = "조금 빨라요 — 또박또박 여유 있게 말해보세요"; }
+    else if (ratio < 0.75) { tempoScore = 85; tempoMsg = "살짝 빠르지만 좋아요"; }
+    else if (ratio <= 1.4) { tempoScore = 100; tempoMsg = "리듬이 자연스러워요"; }
+    else if (ratio <= 1.8) { tempoScore = 80; tempoMsg = "조금 느려요 — 끊지 말고 이어서 말해보세요"; }
+    else { tempoScore = 55; tempoMsg = "많이 느려요 — 원어민 속도를 흉내 내보세요"; }
+  }
+  const total = acc * 0.7 + tempoScore * 0.3;
+  let stars = total >= 90 ? 5 : total >= 75 ? 4 : total >= 60 ? 3 : total >= 40 ? 2 : 1;
+  // 리듬이 좋아도 단어를 많이 빠뜨렸으면 별점 제한
+  if (acc < 50) stars = Math.min(stars, 2);
+  else if (acc < 70) stars = Math.min(stars, 3);
+  const msgs = {
+    5: "완벽해요! 원어민 리듬이에요 🎉",
+    4: "아주 자연스러워요! 👏",
+    3: "좋아요! 조금만 더 부드럽게 🙂",
+    2: "단어를 빠뜨리지 않게 천천히 다시 해봐요",
+    1: "먼저 🔊 듣기를 여러 번 듣고 따라 해보세요",
+  };
+  return { stars, acc, tempoMsg, msg: msgs[stars] };
+}
+
+function listenShadow() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요."); return; }
+  if (recognizing) return;
+
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.interimResults = false;
+  const micBtn = document.getElementById("shadow-mic");
+  let t0 = 0, t1 = 0;
+  recognizing = true;
+  micBtn.classList.add("listening");
+  document.getElementById("shadow-result").innerHTML = `<div class="pron-heard">듣고 있어요...</div>`;
+
+  rec.onspeechstart = () => { t0 = Date.now(); };
+  rec.onspeechend = () => { t1 = Date.now(); };
+  rec.onresult = (e) => {
+    const heard = e.results[0][0].transcript;
+    const durSec = t0 && t1 && t1 > t0 ? (t1 - t0) / 1000 : 0;
+    const r = scoreShadow(shadowCur.en, heard, durSec);
+    const starStr = "★".repeat(r.stars) + "☆".repeat(5 - r.stars);
+    document.getElementById("shadow-result").innerHTML = `
+      <div class="pron-result">
+        <div class="pron-score ${r.stars >= 4 ? "good" : r.stars >= 3 ? "mid" : "bad"}" style="font-size:32px;letter-spacing:4px">${starStr}</div>
+        <div style="font-weight:700;margin-top:6px">${r.msg}</div>
+        <div class="pron-heard">정확도 ${r.acc}%${r.tempoMsg ? " · " + r.tempoMsg : ""}</div>
+        <div class="pron-heard">내가 말한 것: "${heard}"</div>
+      </div>`;
+    todayRec().sh++;
+    saveState();
+  };
+  rec.onerror = (e) => {
+    document.getElementById("shadow-result").innerHTML = `<div class="pron-heard">${
+      e.error === "not-allowed" ? "마이크 권한을 허용해 주세요." : "잘 안 들렸어요. 다시 시도해 주세요."
+    }</div>`;
+  };
+  rec.onend = () => {
+    recognizing = false;
+    micBtn.classList.remove("listening");
+  };
+  rec.start();
 }
 
 // ===== AI 회화 =====
@@ -777,14 +970,21 @@ function renderAIChat() {
 }
 
 function aiSystem() {
-  return `You are an English conversation partner helping a Korean learner practice speaking (intermediate level).
+  // 사용자 레벨에 따라 어휘·문장 길이를 조절
+  const levelRules = {
+    beginner: "The learner is a BEGINNER. Use only very simple, common words. Keep each reply to 1-2 very short sentences (under 8 words each). Speak like a kind, patient native speaker talking to someone new to English.",
+    elementary: "The learner is at an ELEMENTARY level. Use simple everyday vocabulary and short sentences (1-3 sentences per reply). Avoid idioms and slang.",
+    intermediate: "The learner is INTERMEDIATE. Use natural everyday speech, including common idioms. Keep replies to 2-3 sentences.",
+  };
+  return `You are an English conversation partner helping a Korean learner practice speaking.
 Role-play setting: ${ai.sit.role}
+${levelRules[userLevelCode()]}
 Rules:
 - Stay in character and write only in English during the dialogue.
-- Keep each reply to 1-3 short sentences with everyday vocabulary, and usually end with a question to keep the conversation going.
-- If the learner's last message has a clear grammar or word-choice mistake, add ONE short correction tip in Korean on a new line starting with 💡. If their English is fine, do not add any tip.
+- Usually end with a question to keep the conversation going.
+- During the dialogue, do NOT correct the learner's mistakes and do NOT switch to Korean — just respond naturally and keep the flow, like a supportive friend. Quietly remember their mistakes for the end-of-session review.
 - If the learner writes in Korean, respond in character in English and kindly suggest an English phrase they could use.
-- If the learner sends a request in parentheses asking for feedback in Korean, break character and answer in Korean, briefly and encouragingly.`;
+- Only when the learner sends a request in parentheses asking to end the session: break character and answer in Korean — gently point out at most 3 expressions to improve ('원문 → 자연스러운 표현' format), mention what they did well, and ALWAYS finish with one warm, specific sentence of encouragement.`;
 }
 
 async function callClaude() {
@@ -839,7 +1039,7 @@ function sendAI() {
 }
 
 function feedbackAI() {
-  pushAndSend("(지금까지 대화에서 내가 쓴 영어를 한국어로 피드백해줘. 잘한 점 1~2개, 고치면 좋은 문장 최대 3개를 '원문 → 더 자연스러운 표현' 형태로, 그리고 이 상황에서 유용한 추천 표현 2개.)");
+  pushAndSend("(오늘 대화는 여기까지 할게. 내가 쓴 영어를 부드럽게 리뷰해줘 — 고치면 좋은 표현 최대 3개, 잘한 점, 그리고 격려 한마디로 마무리해줘.)");
 }
 
 function micAI() {
@@ -871,4 +1071,5 @@ document.getElementById("word-search").oninput = renderWordbook;
 document.getElementById("ai-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendAI();
 });
-show("home");
+// 처음 방문이면 레벨 테스트(온보딩)부터
+show(state.userLevel ? "home" : "onboard");
