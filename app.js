@@ -692,9 +692,183 @@ function finishLT() {
   show("lt-result");
 }
 
+// ===== AI 회화 =====
+// API 키는 이 기기의 localStorage에만 저장된다 (코드·서버에 넣지 않음)
+const AI_MODEL = "claude-haiku-4-5-20251001";
+const AI_SITS = [
+  { name: "식당", icon: "🍽️", role: "You are a friendly waiter at a casual restaurant in New York. The learner is a customer.", open: "Hi there! Welcome. Are you ready to order, or do you need a minute?" },
+  { name: "카페", icon: "☕", role: "You are a barista at a busy cafe. The learner is a customer ordering a drink.", open: "Hello! What can I get started for you today?" },
+  { name: "쇼핑", icon: "🛍️", role: "You are a clothing store clerk. The learner is a customer looking for clothes.", open: "Hi! Looking for anything special today?" },
+  { name: "공항", icon: "✈️", role: "You are an airline check-in agent at the airport. The learner is a traveler.", open: "Good morning! May I see your passport, please?" },
+  { name: "호텔", icon: "🏨", role: "You are a hotel front desk clerk. The learner is a guest.", open: "Welcome to our hotel! How can I help you today?" },
+  { name: "길 묻기", icon: "🗺️", role: "You are a friendly local on the street. The learner is a tourist asking for directions.", open: "Oh hi! You look a little lost. Can I help you find something?" },
+  { name: "영어 면접", icon: "💼", role: "You are a hiring manager doing a casual English job interview. Ask simple questions one at a time.", open: "Thanks for coming in today. To start, could you tell me a little about yourself?" },
+  { name: "프리토크", icon: "💬", role: "You are a close friend catching up over coffee. Chat about daily life, hobbies, and plans.", open: "Hey! Long time no see. How have you been?" },
+];
+
+let ai = null; // { sit, messages, busy }
+
+function getAIKey() { return localStorage.getItem("myvoca-key") || ""; }
+
+function startAI() {
+  if (!getAIKey()) { show("ai-setup"); return; }
+  renderAISits();
+}
+
+function saveAIKey() {
+  const v = document.getElementById("ai-key-input").value.trim();
+  if (!v.startsWith("sk-ant-")) { alert("sk-ant-로 시작하는 API 키를 입력해 주세요."); return; }
+  localStorage.setItem("myvoca-key", v);
+  document.getElementById("ai-key-input").value = "";
+  renderAISits();
+}
+
+function resetAIKey() {
+  localStorage.removeItem("myvoca-key");
+  show("ai-setup");
+}
+
+function renderAISits() {
+  const grid = document.getElementById("ai-sit-grid");
+  grid.innerHTML = "";
+  AI_SITS.forEach((s, i) => {
+    const btn = document.createElement("button");
+    btn.className = "sit-btn";
+    btn.innerHTML = `<span class="mi">${s.icon}</span>${s.name}`;
+    btn.onclick = () => openAIChat(i);
+    grid.appendChild(btn);
+  });
+  show("ai-sits");
+}
+
+function openAIChat(i) {
+  const s = AI_SITS[i];
+  ai = { sit: s, messages: [{ role: "assistant", content: s.open }], busy: false };
+  document.getElementById("ai-chat-title").textContent = `${s.icon} ${s.name}`;
+  document.getElementById("ai-input").value = "";
+  renderAIChat();
+  show("ai-chat");
+}
+
+function renderAIChat() {
+  const box = document.getElementById("ai-messages");
+  box.innerHTML = "";
+  ai.messages.forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "msg " + (m.role === "user" ? "user" : "ai");
+    div.textContent = m.content;
+    if (m.role === "assistant" && !m.content.startsWith("⚠️")) {
+      const tts = document.createElement("button");
+      tts.className = "msg-tts";
+      tts.textContent = "🔊";
+      const english = m.content.split("💡")[0].trim();
+      tts.onclick = () => speak(english);
+      div.appendChild(tts);
+    }
+    box.appendChild(div);
+  });
+  if (ai.busy) {
+    const typing = document.createElement("div");
+    typing.className = "msg ai";
+    typing.textContent = "· · ·";
+    box.appendChild(typing);
+  }
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function aiSystem() {
+  return `You are an English conversation partner helping a Korean learner practice speaking (intermediate level).
+Role-play setting: ${ai.sit.role}
+Rules:
+- Stay in character and write only in English during the dialogue.
+- Keep each reply to 1-3 short sentences with everyday vocabulary, and usually end with a question to keep the conversation going.
+- If the learner's last message has a clear grammar or word-choice mistake, add ONE short correction tip in Korean on a new line starting with 💡. If their English is fine, do not add any tip.
+- If the learner writes in Korean, respond in character in English and kindly suggest an English phrase they could use.
+- If the learner sends a request in parentheses asking for feedback in Korean, break character and answer in Korean, briefly and encouragingly.`;
+}
+
+async function callClaude() {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": getAIKey(),
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: AI_MODEL,
+      max_tokens: 400,
+      system: aiSystem(),
+      // API는 user 메시지로 시작해야 하므로 시작 지시문을 앞에 붙인다
+      messages: [{ role: "user", content: "(Start the role-play. Greet me in character.)" }].concat(ai.messages),
+    }),
+  });
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("API 키가 올바르지 않아요. '나가기 → ⚙️ 키 변경'에서 다시 입력해 주세요.");
+    if (res.status === 400) throw new Error("요청이 거부됐어요. 잔액(크레딧)이 있는지 console.anthropic.com에서 확인해 주세요.");
+    if (res.status === 429) throw new Error("요청이 너무 잦아요. 잠시 후 다시 시도해 주세요.");
+    throw new Error(`연결에 문제가 있어요 (오류 ${res.status}). 잠시 후 다시 시도해 주세요.`);
+  }
+  const data = await res.json();
+  return data.content.map((b) => b.text || "").join("").trim();
+}
+
+async function pushAndSend(text) {
+  if (!text || ai.busy) return;
+  ai.messages.push({ role: "user", content: text });
+  ai.busy = true;
+  renderAIChat();
+  try {
+    const reply = await callClaude();
+    ai.messages.push({ role: "assistant", content: reply });
+  } catch (e) {
+    ai.messages.pop(); // 실패한 질문은 되돌려서 다시 보낼 수 있게
+    document.getElementById("ai-input").value = text;
+    ai.messages.push({ role: "assistant", content: "⚠️ " + e.message });
+  }
+  ai.busy = false;
+  renderAIChat();
+}
+
+function sendAI() {
+  const input = document.getElementById("ai-input");
+  const text = input.value.trim();
+  input.value = "";
+  pushAndSend(text);
+}
+
+function feedbackAI() {
+  pushAndSend("(지금까지 대화에서 내가 쓴 영어를 한국어로 피드백해줘. 잘한 점 1~2개, 고치면 좋은 문장 최대 3개를 '원문 → 더 자연스러운 표현' 형태로, 그리고 이 상황에서 유용한 추천 표현 2개.)");
+}
+
+function micAI() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요."); return; }
+  if (recognizing) return;
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.interimResults = false;
+  const micBtn = document.getElementById("ai-mic");
+  recognizing = true;
+  micBtn.classList.add("listening");
+  rec.onresult = (e) => {
+    document.getElementById("ai-input").value = e.results[0][0].transcript;
+  };
+  rec.onend = () => {
+    recognizing = false;
+    micBtn.classList.remove("listening");
+  };
+  rec.onerror = () => {};
+  rec.start();
+}
+
 // ===== 시작 =====
 document.querySelectorAll(".tab").forEach((t) => {
   t.onclick = () => show(t.dataset.target);
 });
 document.getElementById("word-search").oninput = renderWordbook;
+document.getElementById("ai-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendAI();
+});
 show("home");

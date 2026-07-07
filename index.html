@@ -36,6 +36,7 @@
         <button class="mode-btn" onclick="startGrammar()"><span class="mi">📝</span>문법 카드</button>
         <button class="mode-btn" onclick="showPhrases()"><span class="mi">🗣️</span>상황별 표현</button>
         <button class="mode-btn" onclick="startLevelTest()"><span class="mi">📏</span>어휘력 측정</button>
+        <button class="mode-btn" onclick="startAI()"><span class="mi">🤖</span>AI 회화</button>
       </div>
     </section>
 
@@ -111,6 +112,48 @@
     <!-- 어휘력 측정 결과 -->
     <section class="screen" id="lt-result">
       <div id="lt-result-body"></div>
+    </section>
+
+    <!-- AI 회화: 키 설정 -->
+    <section class="screen" id="ai-setup">
+      <div class="card">
+        <h2 style="margin-bottom:10px">🤖 AI 회화 시작하기</h2>
+        <p style="color:var(--sub);font-size:14px;line-height:1.8">
+          AI 회화는 Claude API 키가 필요해요.<br />
+          1. <b>console.anthropic.com</b> 접속 후 로그인<br />
+          2. <b>API Keys</b> 메뉴에서 키 만들기 (sk-ant-로 시작)<br />
+          3. 아래에 붙여넣기<br /><br />
+          키는 <b>이 기기의 브라우저에만</b> 저장되고 어디에도 공개되지 않아요.
+          대화 비용은 한 번에 몇 원 수준이에요.
+        </p>
+        <input class="search-input" id="ai-key-input" type="password" placeholder="sk-ant-..." style="margin-top:14px" />
+        <button class="btn btn-primary" onclick="saveAIKey()">저장하고 시작</button>
+      </div>
+      <button class="btn btn-ghost" onclick="show('home')">홈으로</button>
+    </section>
+
+    <!-- AI 회화: 상황 선택 -->
+    <section class="screen" id="ai-sits">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="section-title">어떤 상황으로 대화할까요?</div>
+        <button class="speak-btn" style="margin:0;font-size:13px" onclick="resetAIKey()">⚙️ 키 변경</button>
+      </div>
+      <div class="sit-grid" id="ai-sit-grid"></div>
+    </section>
+
+    <!-- AI 회화: 채팅 -->
+    <section class="screen" id="ai-chat">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <b id="ai-chat-title" style="font-size:17px"></b>
+        <button class="speak-btn" style="margin:0;font-size:13px" onclick="show('ai-sits')">← 나가기</button>
+      </div>
+      <div class="chat-box" id="ai-messages"></div>
+      <button class="btn btn-ghost" style="margin:12px 0" onclick="feedbackAI()">📋 내 영어 피드백 받기</button>
+      <div class="chat-input-row">
+        <button class="chat-mic" id="ai-mic" onclick="micAI()">🎤</button>
+        <input class="chat-input" id="ai-input" placeholder="영어로 말해보세요..." />
+        <button class="chat-send" onclick="sendAI()">➤</button>
+      </div>
     </section>
 
     <!-- 단어장 -->
