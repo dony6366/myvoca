@@ -295,6 +295,72 @@ body {
 .day-cell .dot.done { background: var(--mint); color: #fff; }
 .day-cell .label { font-size: 11px; color: var(--sub); margin-top: 5px; }
 
+/* ---------- 학습 모드 ---------- */
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.mode-btn {
+  background: var(--card);
+  border: none;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.06s;
+}
+.mode-btn:active { transform: scale(0.97); }
+.mode-btn .mi { display: block; font-size: 26px; margin-bottom: 6px; }
+
+/* ---------- 상황별 표현 ---------- */
+.sit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.sit-btn {
+  background: var(--card);
+  border: none;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 20px 8px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+.sit-btn .mi { display: block; font-size: 30px; margin-bottom: 8px; }
+
+.phrase-item {
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.phrase-item .en { font-weight: 700; font-size: 16px; line-height: 1.5; }
+.phrase-item .ko { color: var(--sub); font-size: 13px; margin-top: 4px; }
+.phrase-actions { display: flex; gap: 8px; margin-top: 12px; }
+.phrase-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pa-listen { background: var(--accent-soft); color: var(--accent); }
+.pa-mic { background: var(--mint-soft); color: var(--mint); }
+.pa-mic.listening { background: var(--red); color: #fff; }
+.phrase-score { margin-top: 10px; font-weight: 700; font-size: 14px; }
+
 /* ---------- 하단 탭 ---------- */
 .tabbar {
   position: fixed;

@@ -29,8 +29,16 @@ function todayStr(offset = 0) {
 
 function todayRec() {
   const t = todayStr();
-  if (!state.days[t]) state.days[t] = { q: 0, right: 0, pron: 0 };
-  return state.days[t];
+  if (!state.days[t]) state.days[t] = { q: 0, right: 0, pron: 0, g: 0, ph: 0 };
+  const rec = state.days[t];
+  if (rec.g === undefined) rec.g = 0;   // 예전 버전 기록 호환
+  if (rec.ph === undefined) rec.ph = 0;
+  return rec;
+}
+
+// 하루 총 활동량 (문제 + 발음 + 문법 + 표현)
+function dayTotal(d) {
+  return d.q + d.pron + (d.g || 0) + (d.ph || 0);
 }
 
 // ===== SRS =====
@@ -69,7 +77,27 @@ function calcStreak() {
 }
 function activityOn(dateStr) {
   const d = state.days[dateStr];
-  return d && (d.q > 0 || d.pron > 0);
+  return d && dayTotal(d) > 0;
+}
+
+// ===== 실시간 난이도 조절 =====
+// 최근 30문제의 정답률을 기준으로 새 단어 투입량과 문제 유형을 조절한다
+function recordAnswer(correct) {
+  if (!state.recent) state.recent = [];
+  state.recent.push(correct ? 1 : 0);
+  if (state.recent.length > 30) state.recent = state.recent.slice(-30);
+}
+function recentAccuracy() {
+  const r = state.recent || [];
+  if (r.length < 10) return null; // 데이터가 적으면 판단 보류
+  return r.reduce((a, b) => a + b, 0) / r.length;
+}
+function difficultyInfo() {
+  const acc = recentAccuracy();
+  if (acc === null) return { label: "측정 중", newCount: 4, types: ["meaning", "reverse", "listen"] };
+  if (acc >= 0.85) return { label: "어려움", newCount: 6, types: ["reverse", "listen", "reverse", "meaning"] };
+  if (acc >= 0.6) return { label: "보통", newCount: 4, types: ["meaning", "reverse", "listen"] };
+  return { label: "쉬움", newCount: 2, types: ["meaning", "listen", "meaning"] };
 }
 
 // ===== TTS (읽어주기) =====
@@ -109,25 +137,42 @@ function renderHome() {
     due > 0 ? `복습할 단어 ${due}개가 기다리고 있어요`
     : remainingNew > 0 ? `오늘은 새 단어 ${Math.min(remainingNew, SESSION_SIZE)}개를 배워볼까요?`
     : "모든 단어를 학습했어요! 🎉";
-  document.getElementById("stat-today").textContent = rec.q;
+  document.getElementById("stat-today").textContent = rec.q + (rec.g || 0);
   document.getElementById("stat-learned").textContent = learned;
   document.getElementById("stat-pron").textContent = rec.pron;
+
+  // 난이도 자동 조절 상태 표시
+  const acc = recentAccuracy();
+  const diff = difficultyInfo();
+  document.getElementById("home-diff").textContent =
+    acc === null
+      ? "매일 10개씩, 꾸준함이 실력이 돼요"
+      : `최근 정답률 ${Math.round(acc * 100)}% — 난이도 자동 조절: ${diff.label}`;
 }
 
 // ===== 퀴즈 =====
 let quiz = null; // { queue: [{word, type}], idx, right }
 
 function startQuiz() {
+  // 난이도 자동 조절: 최근 정답률에 따라 새 단어 수와 문제 유형이 달라짐
+  const diff = difficultyInfo();
   const due = shuffle(dueWords());
   const fresh = shuffle(newWords());
-  const pool = due.concat(fresh).slice(0, SESSION_SIZE);
+  const nNew = Math.min(diff.newCount, fresh.length);
+  let pool = due.slice(0, SESSION_SIZE - nNew).concat(fresh.slice(0, nNew));
+  if (pool.length < SESSION_SIZE) {
+    // 부족하면 남은 복습/새 단어로 채움
+    const used = new Set(pool.map((w) => w.w));
+    const extra = due.concat(fresh).filter((w) => !used.has(w.w));
+    pool = pool.concat(extra.slice(0, SESSION_SIZE - pool.length));
+  }
   if (pool.length === 0) {
     alert("학습할 단어가 없어요. 내일 다시 만나요!");
     return;
   }
-  const types = ["meaning", "reverse", "listen"];
+  const types = diff.types;
   quiz = {
-    queue: pool.map((w, i) => ({ word: w, type: types[i % types.length] })),
+    queue: shuffle(pool).map((w, i) => ({ word: w, type: types[i % types.length] })),
     idx: 0,
     right: 0,
   };
@@ -196,6 +241,7 @@ function answerQuestion(btn, correct, w) {
   if (!correct) btn.classList.add("wrong");
 
   gradeWord(w.w, correct);
+  recordAnswer(correct);
   const rec = todayRec();
   rec.q++;
   if (correct) { rec.right++; quiz.right++; }
@@ -220,14 +266,18 @@ function nextQuestion() {
 }
 
 function finishQuiz() {
-  const total = quiz.queue.length;
+  finishSession(quiz.right, quiz.queue.length, "startQuiz()");
+}
+
+// 세션 완료 화면 (단어 퀴즈·문법 카드 공용)
+function finishSession(right, total, retryCall) {
   document.getElementById("quiz-result").innerHTML = `
     <div class="card" style="text-align:center">
-      <div style="font-size:44px">${quiz.right === total ? "🏆" : "👏"}</div>
+      <div style="font-size:44px">${right === total ? "🏆" : "👏"}</div>
       <h2 style="margin:10px 0 4px">학습 완료!</h2>
-      <p style="color:var(--sub)">${total}문제 중 <b style="color:var(--accent)">${quiz.right}개</b>를 맞혔어요</p>
+      <p style="color:var(--sub)">${total}문제 중 <b style="color:var(--accent)">${right}개</b>를 맞혔어요</p>
     </div>
-    <button class="btn btn-primary" onclick="startQuiz()">한 번 더 학습하기</button>
+    <button class="btn btn-primary" onclick="${retryCall}">한 번 더 학습하기</button>
     <div style="height:10px"></div>
     <button class="btn btn-ghost" onclick="show('home')">홈으로</button>`;
   show("quiz-done");
@@ -382,6 +432,21 @@ function renderStats() {
       <div class="count">${c}</div>
     </div>`).join("");
 
+  // 어휘력 진단 결과
+  const lt = state.levelTest;
+  document.getElementById("stats-level").innerHTML = lt
+    ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:800;font-size:17px">${lt.label}</div>
+          <div style="color:var(--sub);font-size:13px;margin-top:3px">추정 어휘량 약 ${lt.size.toLocaleString()}개 · ${lt.date} 측정</div>
+        </div>
+        <button class="speak-btn" style="margin:0" onclick="startLevelTest()">다시 측정</button>
+      </div>`
+    : `<div class="card" style="text-align:center">
+        <div style="color:var(--sub);margin-bottom:12px">아직 어휘력을 측정하지 않았어요</div>
+        <button class="btn btn-ghost" onclick="startLevelTest()">📏 내 어휘력 측정하기</button>
+      </div>`;
+
   // 최근 7일
   const dayLabels = ["일", "월", "화", "수", "목", "금", "토"];
   let cells = "";
@@ -389,7 +454,7 @@ function renderStats() {
     const ds = todayStr(-i);
     const d = new Date(ds + "T00:00:00");
     const rec = state.days[ds];
-    const count = rec ? rec.q + rec.pron : 0;
+    const count = rec ? dayTotal(rec) : 0;
     cells += `
       <div class="day-cell">
         <div class="dot ${count > 0 ? "done" : ""}">${count > 0 ? count : ""}</div>
@@ -410,6 +475,221 @@ function shuffle(arr) {
 }
 function esc(s) {
   return s.replace(/'/g, "\\'");
+}
+
+// ===== 문법 카드 =====
+let gQuiz = null;
+
+function startGrammar() {
+  gQuiz = { queue: shuffle(GRAMMAR).slice(0, SESSION_SIZE), idx: 0, right: 0 };
+  show("grammar");
+  renderGQuestion();
+}
+
+function renderGQuestion() {
+  const q = gQuiz.queue[gQuiz.idx];
+  document.getElementById("g-progress").style.width = `${(gQuiz.idx / gQuiz.queue.length) * 100}%`;
+  document.getElementById("g-count").textContent = `${gQuiz.idx + 1} / ${gQuiz.queue.length}`;
+  document.getElementById("g-feedback").innerHTML = "";
+  document.getElementById("g-next").style.display = "none";
+  document.getElementById("g-prompt").innerHTML = `
+    <span class="pill pill-accent">${q.cat}</span>
+    <div class="q-word" style="font-size:20px;line-height:1.6;margin-top:12px">${q.q}</div>`;
+
+  const choicesEl = document.getElementById("g-choices");
+  choicesEl.innerHTML = "";
+  shuffle(q.c).forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = c;
+    btn.onclick = () => answerG(btn, c, q);
+    choicesEl.appendChild(btn);
+  });
+}
+
+function answerG(btn, choice, q) {
+  const correct = choice === q.a;
+  document.querySelectorAll("#g-choices .choice").forEach((b) => {
+    b.disabled = true;
+    if (b.textContent === q.a) b.classList.add("correct");
+  });
+  if (!correct) btn.classList.add("wrong");
+
+  todayRec().g++;
+  if (correct) gQuiz.right++;
+  saveState();
+
+  document.getElementById("g-feedback").innerHTML = `
+    <div class="feedback ${correct ? "good" : "bad"}">
+      ${correct ? "정답이에요! 🎉" : `아쉬워요! 정답: ${q.a}`}
+      <div class="ex" style="font-weight:400">${q.why}</div>
+    </div>`;
+  document.getElementById("g-next").style.display = "block";
+}
+
+function nextG() {
+  gQuiz.idx++;
+  if (gQuiz.idx >= gQuiz.queue.length) {
+    finishSession(gQuiz.right, gQuiz.queue.length, "startGrammar()");
+  } else {
+    renderGQuestion();
+  }
+}
+
+// ===== 상황별 표현 =====
+function showPhrases() {
+  const grid = document.getElementById("sit-grid");
+  grid.innerHTML = "";
+  PHRASES.forEach((s, i) => {
+    const btn = document.createElement("button");
+    btn.className = "sit-btn";
+    btn.innerHTML = `<span class="mi">${s.icon}</span>${s.name}`;
+    btn.onclick = () => openSituation(i);
+    grid.appendChild(btn);
+  });
+  show("phrases");
+}
+
+function openSituation(si) {
+  const s = PHRASES[si];
+  document.getElementById("phrase-title").textContent = `${s.icon} ${s.name} 표현 ${s.items.length}개`;
+  const listEl = document.getElementById("phrase-items");
+  listEl.innerHTML = "";
+  s.items.forEach((p, pi) => {
+    const item = document.createElement("div");
+    item.className = "phrase-item";
+    item.innerHTML = `<div class="en">${p.en}</div><div class="ko">${p.ko}</div>`;
+    const actions = document.createElement("div");
+    actions.className = "phrase-actions";
+    const listen = document.createElement("button");
+    listen.className = "pa-listen";
+    listen.textContent = "🔊 듣기";
+    listen.onclick = () => speak(p.en);
+    const mic = document.createElement("button");
+    mic.className = "pa-mic";
+    mic.textContent = "🎤 따라 말하기";
+    const score = document.createElement("div");
+    score.className = "phrase-score";
+    mic.onclick = () => pronPhrase(p.en, mic, score);
+    actions.appendChild(listen);
+    actions.appendChild(mic);
+    item.appendChild(actions);
+    item.appendChild(score);
+    listEl.appendChild(item);
+  });
+  show("phrase-list");
+}
+
+function pronPhrase(target, micBtn, scoreEl) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요.");
+    return;
+  }
+  if (recognizing) return;
+
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  recognizing = true;
+  micBtn.classList.add("listening");
+  scoreEl.textContent = "듣고 있어요...";
+
+  rec.onresult = (e) => {
+    const heard = e.results[0][0].transcript;
+    const score = similarity(target, heard);
+    const color = score >= 80 ? "var(--mint)" : score >= 50 ? "var(--amber)" : "var(--red)";
+    scoreEl.innerHTML = `<span style="color:${color}">${score}점</span> <span style="color:var(--sub);font-weight:400">— "${heard}"</span>`;
+    todayRec().ph++;
+    saveState();
+  };
+  rec.onerror = (e) => {
+    scoreEl.textContent = e.error === "not-allowed"
+      ? "마이크 권한을 허용해 주세요."
+      : "잘 안 들렸어요. 다시 시도해 주세요.";
+  };
+  rec.onend = () => {
+    recognizing = false;
+    micBtn.classList.remove("listening");
+  };
+  rec.start();
+}
+
+// ===== 어휘력 측정 =====
+const LT_LABELS = ["입문", "초급 (A1)", "초중급 (A2)", "중급 (B1)", "중상급 (B2)", "고급 (C1)"];
+const LT_SIZES = [200, 800, 1500, 3000, 5500, 9000];
+const LT_PER_LEVEL = 4; // 레벨당 출제 수
+let lt = null;
+
+function startLevelTest() {
+  // 각 레벨에서 4문제씩, 쉬운 것부터 순서대로 출제
+  const queue = [];
+  for (let lv = 1; lv <= 5; lv++) {
+    const pool = shuffle(LEVEL_TEST.filter((x) => x.level === lv));
+    queue.push(...pool.slice(0, LT_PER_LEVEL));
+  }
+  lt = { queue, idx: 0, correct: [0, 0, 0, 0, 0] };
+  show("leveltest");
+  renderLTQuestion();
+}
+
+function renderLTQuestion() {
+  const q = lt.queue[lt.idx];
+  document.getElementById("lt-progress").style.width = `${(lt.idx / lt.queue.length) * 100}%`;
+  document.getElementById("lt-count").textContent = `${lt.idx + 1} / ${lt.queue.length}`;
+  document.getElementById("lt-prompt").innerHTML = `
+    <div class="q-type">다음 단어의 뜻은? (진단 중이라 정답은 안 알려드려요)</div>
+    <div class="q-word">${q.w}</div>`;
+  const choicesEl = document.getElementById("lt-choices");
+  choicesEl.innerHTML = "";
+  shuffle([q.m, ...q.x]).forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = c;
+    btn.onclick = () => {
+      if (c === q.m) lt.correct[q.level - 1]++;
+      lt.idx++;
+      if (lt.idx >= lt.queue.length) finishLT();
+      else renderLTQuestion();
+    };
+    choicesEl.appendChild(btn);
+  });
+}
+
+function finishLT() {
+  // 레벨 1부터 차례로 4문제 중 3개 이상 맞히면 통과, 처음 막힌 곳이 내 레벨
+  let attained = 0;
+  for (let i = 0; i < 5; i++) {
+    if (lt.correct[i] >= 3) attained = i + 1;
+    else break;
+  }
+  const label = LT_LABELS[attained];
+  const size = LT_SIZES[attained];
+  state.levelTest = { date: todayStr(), label, size, correct: lt.correct };
+  saveState();
+
+  const bars = lt.correct.map((c, i) => `
+    <div class="box-bar">
+      <div class="name">${LT_LABELS[i + 1].split(" ")[0]}</div>
+      <div class="track"><div class="fill" style="width:${(c / LT_PER_LEVEL) * 100}%"></div></div>
+      <div class="count">${c}/${LT_PER_LEVEL}</div>
+    </div>`).join("");
+
+  document.getElementById("lt-result-body").innerHTML = `
+    <div class="card" style="text-align:center">
+      <div style="font-size:44px">📏</div>
+      <div style="color:var(--sub);margin-top:8px">당신의 어휘 수준은</div>
+      <h2 style="margin:6px 0;color:var(--accent)">${label}</h2>
+      <p style="color:var(--sub)">추정 어휘량 약 <b>${size.toLocaleString()}개</b></p>
+    </div>
+    <div class="section-title">레벨별 정답</div>
+    <div class="card">${bars}</div>
+    <button class="btn btn-primary" onclick="startLevelTest()">다시 측정하기</button>
+    <div style="height:10px"></div>
+    <button class="btn btn-ghost" onclick="show('home')">홈으로</button>`;
+  show("lt-result");
 }
 
 // ===== 시작 =====

@@ -21,7 +21,7 @@
       <div class="hero">
         <div class="sub">오늘의 학습</div>
         <div class="big" id="home-due">복습할 단어를 불러오는 중...</div>
-        <div class="sub">매일 10개씩, 꾸준함이 실력이 돼요</div>
+        <div class="sub" id="home-diff">매일 10개씩, 꾸준함이 실력이 돼요</div>
       </div>
       <div class="stat-grid">
         <div class="stat"><div class="num" id="stat-today">0</div><div class="label">오늘 푼 문제</div></div>
@@ -31,6 +31,12 @@
       <button class="btn btn-primary" onclick="startQuiz()">📖 오늘의 학습 시작</button>
       <div style="height:10px"></div>
       <button class="btn btn-mint" onclick="startPron()">🎤 발음 연습하기</button>
+      <div class="section-title">더 학습하기</div>
+      <div class="mode-grid">
+        <button class="mode-btn" onclick="startGrammar()"><span class="mi">📝</span>문법 카드</button>
+        <button class="mode-btn" onclick="showPhrases()"><span class="mi">🗣️</span>상황별 표현</button>
+        <button class="mode-btn" onclick="startLevelTest()"><span class="mi">📏</span>어휘력 측정</button>
+      </div>
     </section>
 
     <!-- 퀴즈 -->
@@ -67,6 +73,46 @@
       <button class="btn btn-ghost" onclick="startPron()">다른 단어 연습하기</button>
     </section>
 
+    <!-- 문법 카드 -->
+    <section class="screen" id="grammar">
+      <div style="text-align:right;color:var(--sub);font-size:13px;font-weight:700" id="g-count"></div>
+      <div class="progress-bar"><div id="g-progress" style="width:0%"></div></div>
+      <div class="card">
+        <div class="q-prompt" id="g-prompt"></div>
+        <div class="choices" id="g-choices"></div>
+        <div id="g-feedback"></div>
+      </div>
+      <button class="btn btn-primary" id="g-next" style="display:none" onclick="nextG()">다음 문제</button>
+    </section>
+
+    <!-- 상황별 표현: 상황 선택 -->
+    <section class="screen" id="phrases">
+      <div class="section-title">상황을 골라보세요</div>
+      <div class="sit-grid" id="sit-grid"></div>
+    </section>
+
+    <!-- 상황별 표현: 표현 목록 -->
+    <section class="screen" id="phrase-list">
+      <button class="btn btn-ghost" style="margin-bottom:12px" onclick="show('phrases')">← 다른 상황 보기</button>
+      <div class="section-title" id="phrase-title"></div>
+      <div id="phrase-items"></div>
+    </section>
+
+    <!-- 어휘력 측정 -->
+    <section class="screen" id="leveltest">
+      <div style="text-align:right;color:var(--sub);font-size:13px;font-weight:700" id="lt-count"></div>
+      <div class="progress-bar"><div id="lt-progress" style="width:0%"></div></div>
+      <div class="card">
+        <div class="q-prompt" id="lt-prompt"></div>
+        <div class="choices" id="lt-choices"></div>
+      </div>
+    </section>
+
+    <!-- 어휘력 측정 결과 -->
+    <section class="screen" id="lt-result">
+      <div id="lt-result-body"></div>
+    </section>
+
     <!-- 단어장 -->
     <section class="screen" id="wordbook">
       <div class="section-title">전체 단어 (<span id="word-count">0</span>개)</div>
@@ -77,6 +123,8 @@
     <!-- 통계 -->
     <section class="screen" id="stats">
       <div id="stats-summary"></div>
+      <div class="section-title">어휘력 진단</div>
+      <div id="stats-level"></div>
       <div class="section-title">단어 암기 단계</div>
       <div class="card" id="stats-boxes"></div>
       <div class="section-title">최근 7일 활동</div>
@@ -92,6 +140,9 @@
   </nav>
 
   <script src="words.js"></script>
+  <script src="grammar.js"></script>
+  <script src="phrases.js"></script>
+  <script src="leveltest.js"></script>
   <script src="app.js"></script>
   <script>
     // 인터넷에 올렸을 때(https) 홈 화면 설치·오프라인 사용이 가능하도록 등록
