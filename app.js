@@ -366,8 +366,17 @@ function finishSession(right, total, retryCall) {
   show("quiz-done");
 }
 
+// 뜻의 핵심 부분 (쉼표/세미콜론 앞)
+function meaningKey(m) {
+  return m.split(/[,;]/)[0].trim();
+}
+
 function pickOthers(word, n) {
-  return shuffle(WORDS.filter((x) => x.w !== word.w)).slice(0, n);
+  // 동의어(뜻이 같거나 비슷한 단어)는 오답 보기에서 제외 — 둘 다 정답이 돼버리는 문제 방지
+  const key = meaningKey(word.m);
+  return shuffle(
+    WORDS.filter((x) => x.w !== word.w && x.m !== word.m && meaningKey(x.m) !== key)
+  ).slice(0, n);
 }
 
 // ===== 발음 연습 =====
@@ -1000,8 +1009,10 @@ async function callClaude() {
       model: AI_MODEL,
       max_tokens: 400,
       system: aiSystem(),
-      // API는 user 메시지로 시작해야 하므로 시작 지시문을 앞에 붙인다
-      messages: [{ role: "user", content: "(Start the role-play. Greet me in character.)" }].concat(ai.messages),
+      // API는 user 메시지로 시작해야 하므로 시작 지시문을 앞에 붙이고,
+      // 오류 안내 말풍선(⚠️)은 대화 기록에서 제외해 역할 순서가 꼬이지 않게 한다
+      messages: [{ role: "user", content: "(Start the role-play. Greet me in character.)" }]
+        .concat(ai.messages.filter((m) => !m.content.startsWith("⚠️"))),
     }),
   });
   if (!res.ok) {
@@ -1069,7 +1080,8 @@ document.querySelectorAll(".tab").forEach((t) => {
 });
 document.getElementById("word-search").oninput = renderWordbook;
 document.getElementById("ai-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") sendAI();
+  // isComposing: 한글 조합 중 Enter로 잘못 전송되는 것 방지
+  if (e.key === "Enter" && !e.isComposing) sendAI();
 });
 // 처음 방문이면 레벨 테스트(온보딩)부터
 show(state.userLevel ? "home" : "onboard");

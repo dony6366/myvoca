@@ -1,5 +1,5 @@
 // 오프라인에서도 열리도록 앱 파일을 캐시해 두는 서비스 워커
-const CACHE = "myvoca-v6";
+const CACHE = "myvoca-v7";
 const FILES = [
   "./",
   "./index.html",
