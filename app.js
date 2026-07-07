@@ -379,9 +379,88 @@ function pickOthers(word, n) {
   ).slice(0, n);
 }
 
+// ===== 음성 인식 공통 =====
+let recognizing = false;
+let recState = null; // 녹음 비교 모드 상태
+
+// 아이폰/아이패드는 음성 인식이 제대로 동작하지 않아 녹음 비교 모드를 쓴다
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+// 녹음 비교 모드: 내 발음을 녹음해 원어민 발음과 번갈아 들으며 스스로 평가
+async function recordCompare(micBtn, resultEl, targetText, counterField) {
+  if (recState) { recState.recorder.stop(); return; } // 두 번째 탭 = 녹음 종료
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+    recState = { recorder, stream };
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      micBtn.classList.remove("listening");
+      recState = null;
+      const url = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType || "audio/mp4" }));
+      renderCompare(resultEl, url, targetText, counterField);
+    };
+    micBtn.classList.add("listening");
+    resultEl.innerHTML = `<div class="pron-heard">🔴 녹음 중... 문장을 읽고 마이크를 다시 누르세요</div>`;
+    recorder.start();
+  } catch (e) {
+    recState = null;
+    resultEl.innerHTML = `<div class="pron-heard">마이크를 사용할 수 없어요. 설정에서 마이크 권한을 허용해 주세요.</div>`;
+  }
+}
+
+function renderCompare(resultEl, url, targetText, counterField) {
+  resultEl.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "pron-result";
+  wrap.innerHTML = `<div class="pron-heard" style="margin-bottom:10px">원어민과 내 발음을 번갈아 듣고 스스로 평가해 보세요</div>`;
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:8px;justify-content:center;margin-bottom:12px";
+  const mine = document.createElement("button");
+  mine.className = "speak-btn";
+  mine.style.margin = "0";
+  mine.textContent = "▶️ 내 발음";
+  const audio = new Audio(url);
+  mine.onclick = () => { audio.currentTime = 0; audio.play(); };
+  const native = document.createElement("button");
+  native.className = "speak-btn";
+  native.style.margin = "0";
+  native.textContent = "🔊 원어민";
+  native.onclick = () => speak(targetText);
+  row.appendChild(mine);
+  row.appendChild(native);
+  wrap.appendChild(row);
+
+  // 스스로 별점 매기기 (1회만 기록)
+  let rated = false;
+  const stars = document.createElement("div");
+  stars.style.cssText = "display:flex;gap:6px;justify-content:center";
+  const doneMsg = document.createElement("div");
+  doneMsg.style.cssText = "text-align:center;font-weight:700;margin-top:8px";
+  for (let i = 1; i <= 5; i++) {
+    const s = document.createElement("button");
+    s.style.cssText = "border:none;background:none;font-size:26px;cursor:pointer;padding:0";
+    s.textContent = "☆";
+    s.onclick = () => {
+      [...stars.children].forEach((c, j) => (c.textContent = j < i ? "★" : "☆"));
+      if (!rated) { rated = true; todayRec()[counterField]++; saveState(); }
+      doneMsg.textContent = i >= 4 ? "훌륭해요! 🎉" : i >= 3 ? "좋아요, 한 번 더! 💪" : "여러 번 들으면서 따라 해보세요 🙂";
+    };
+    stars.appendChild(s);
+  }
+  wrap.appendChild(stars);
+  wrap.appendChild(doneMsg);
+  resultEl.appendChild(wrap);
+}
+
 // ===== 발음 연습 =====
 let pronWord = null;
-let recognizing = false;
 
 function startPron() {
   const due = dueWords();
@@ -392,10 +471,19 @@ function startPron() {
   document.getElementById("pron-ex").textContent = pronWord.ex;
   document.getElementById("pron-ex-ko").textContent = pronWord.exKo;
   document.getElementById("pron-result").innerHTML = "";
+  // 아이폰은 녹음 비교 방식임을 안내
+  document.querySelector("#pron .mic-hint").textContent = isIOS()
+    ? "마이크를 눌러 녹음하고, 원어민 발음과 비교해 보세요"
+    : "마이크를 누르고 위 예문을 읽어보세요";
   show("pron");
 }
 
 function listenPron() {
+  // 아이폰은 음성 인식이 불안정해서 녹음 비교 모드로 연습
+  if (isIOS()) {
+    recordCompare(document.getElementById("mic-btn"), document.getElementById("pron-result"), pronWord.ex, "pron");
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요.");
@@ -414,7 +502,12 @@ function listenPron() {
   document.getElementById("pron-result").innerHTML =
     `<div class="pron-heard">듣고 있어요... 예문을 읽어보세요</div>`;
 
+  // 멈춤 방지: 10초 안에 결과가 없으면 자동 종료
+  let gotResult = false;
+  const watchdog = setTimeout(() => { try { rec.stop(); } catch (e) {} }, 10000);
+
   rec.onresult = (e) => {
+    gotResult = true;
     const heard = e.results[0][0].transcript;
     const score = similarity(pronWord.ex, heard);
     const cls = score >= 80 ? "good" : score >= 50 ? "mid" : "bad";
@@ -429,14 +522,20 @@ function listenPron() {
     saveState();
   };
   rec.onerror = (e) => {
+    gotResult = true;
     const msg = e.error === "not-allowed"
       ? "마이크 사용이 차단되어 있어요. 주소창의 마이크 권한을 허용해 주세요."
       : "음성이 잘 들리지 않았어요. 다시 시도해 주세요.";
     document.getElementById("pron-result").innerHTML = `<div class="pron-heard">${msg}</div>`;
   };
   rec.onend = () => {
+    clearTimeout(watchdog);
     recognizing = false;
     micBtn.classList.remove("listening");
+    if (!gotResult) {
+      document.getElementById("pron-result").innerHTML =
+        `<div class="pron-heard">잘 안 들렸어요. 마이크 가까이에서 또렷하게 말해보세요.</div>`;
+    }
   };
   rec.start();
 }
@@ -673,6 +772,11 @@ function openSituation(si) {
 }
 
 function pronPhrase(target, micBtn, scoreEl) {
+  // 아이폰은 녹음 비교 모드로
+  if (isIOS()) {
+    recordCompare(micBtn, scoreEl, target, "ph");
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요.");
@@ -689,7 +793,11 @@ function pronPhrase(target, micBtn, scoreEl) {
   micBtn.classList.add("listening");
   scoreEl.textContent = "듣고 있어요...";
 
+  let gotResult = false;
+  const watchdog = setTimeout(() => { try { rec.stop(); } catch (e) {} }, 10000);
+
   rec.onresult = (e) => {
+    gotResult = true;
     const heard = e.results[0][0].transcript;
     const score = similarity(target, heard);
     const color = score >= 80 ? "var(--mint)" : score >= 50 ? "var(--amber)" : "var(--red)";
@@ -698,13 +806,16 @@ function pronPhrase(target, micBtn, scoreEl) {
     saveState();
   };
   rec.onerror = (e) => {
+    gotResult = true;
     scoreEl.textContent = e.error === "not-allowed"
       ? "마이크 권한을 허용해 주세요."
       : "잘 안 들렸어요. 다시 시도해 주세요.";
   };
   rec.onend = () => {
+    clearTimeout(watchdog);
     recognizing = false;
     micBtn.classList.remove("listening");
+    if (!gotResult) scoreEl.textContent = "잘 안 들렸어요. 다시 시도해 주세요.";
   };
   rec.start();
 }
@@ -852,6 +963,11 @@ function scoreShadow(target, heard, durSec) {
 }
 
 function listenShadow() {
+  // 아이폰은 녹음 비교 모드로
+  if (isIOS()) {
+    recordCompare(document.getElementById("shadow-mic"), document.getElementById("shadow-result"), shadowCur.en, "sh");
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요."); return; }
   if (recognizing) return;
@@ -865,9 +981,13 @@ function listenShadow() {
   micBtn.classList.add("listening");
   document.getElementById("shadow-result").innerHTML = `<div class="pron-heard">듣고 있어요...</div>`;
 
+  let gotResult = false;
+  const watchdog = setTimeout(() => { try { rec.stop(); } catch (e) {} }, 10000);
+
   rec.onspeechstart = () => { t0 = Date.now(); };
   rec.onspeechend = () => { t1 = Date.now(); };
   rec.onresult = (e) => {
+    gotResult = true;
     const heard = e.results[0][0].transcript;
     const durSec = t0 && t1 && t1 > t0 ? (t1 - t0) / 1000 : 0;
     const r = scoreShadow(shadowCur.en, heard, durSec);
@@ -883,13 +1003,19 @@ function listenShadow() {
     saveState();
   };
   rec.onerror = (e) => {
+    gotResult = true;
     document.getElementById("shadow-result").innerHTML = `<div class="pron-heard">${
       e.error === "not-allowed" ? "마이크 권한을 허용해 주세요." : "잘 안 들렸어요. 다시 시도해 주세요."
     }</div>`;
   };
   rec.onend = () => {
+    clearTimeout(watchdog);
     recognizing = false;
     micBtn.classList.remove("listening");
+    if (!gotResult) {
+      document.getElementById("shadow-result").innerHTML =
+        `<div class="pron-heard">잘 안 들렸어요. 마이크 가까이에서 또렷하게 말해보세요.</div>`;
+    }
   };
   rec.start();
 }
@@ -1054,6 +1180,12 @@ function feedbackAI() {
 }
 
 function micAI() {
+  // 아이폰은 음성 인식 대신 기본 키보드의 받아쓰기(🎙️)가 훨씬 잘 동작한다
+  if (isIOS()) {
+    alert("아이폰에서는 입력창을 누른 뒤 키보드의 🎙️(받아쓰기) 버튼으로 말하면 돼요!");
+    document.getElementById("ai-input").focus();
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert("이 브라우저는 음성 인식을 지원하지 않아요. 크롬이나 엣지에서 열어주세요."); return; }
   if (recognizing) return;
