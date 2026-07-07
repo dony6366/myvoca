@@ -330,7 +330,12 @@ function renderWordbook() {
   const listEl = document.getElementById("word-list");
   listEl.innerHTML = "";
   const boxNames = ["새 단어", "1단계", "2단계", "3단계", "4단계", "마스터"];
-  WORDS.forEach((w) => {
+  const q = document.getElementById("word-search").value.trim().toLowerCase();
+  const list = q
+    ? WORDS.filter((w) => w.w.toLowerCase().includes(q) || w.m.includes(q))
+    : WORDS;
+  document.getElementById("word-count").textContent = list.length;
+  list.forEach((w) => {
     const p = state.prog[w.w];
     const label = p ? boxNames[p.box] : "미학습";
     const pillCls = !p ? "pill-red" : p.box >= 4 ? "pill-mint" : "pill-accent";
@@ -411,4 +416,5 @@ function esc(s) {
 document.querySelectorAll(".tab").forEach((t) => {
   t.onclick = () => show(t.dataset.target);
 });
+document.getElementById("word-search").oninput = renderWordbook;
 show("home");
