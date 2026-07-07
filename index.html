@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyVoca — 나만의 영어 단어장</title>
+  <meta name="theme-color" content="#5b5ce2" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <h1>MyVoca</h1>
+      <div class="streak-badge" id="streak">🔥 0일</div>
+    </div>
+
+    <!-- 홈 -->
+    <section class="screen active" id="home">
+      <div class="hero">
+        <div class="sub">오늘의 학습</div>
+        <div class="big" id="home-due">복습할 단어를 불러오는 중...</div>
+        <div class="sub">매일 10개씩, 꾸준함이 실력이 돼요</div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="num" id="stat-today">0</div><div class="label">오늘 푼 문제</div></div>
+        <div class="stat"><div class="num" id="stat-learned">0</div><div class="label">학습한 단어</div></div>
+        <div class="stat"><div class="num" id="stat-pron">0</div><div class="label">발음 연습</div></div>
+      </div>
+      <button class="btn btn-primary" onclick="startQuiz()">📖 오늘의 학습 시작</button>
+      <div style="height:10px"></div>
+      <button class="btn btn-mint" onclick="startPron()">🎤 발음 연습하기</button>
+    </section>
+
+    <!-- 퀴즈 -->
+    <section class="screen" id="quiz">
+      <div style="text-align:right;color:var(--sub);font-size:13px;font-weight:700" id="quiz-count"></div>
+      <div class="progress-bar"><div id="quiz-progress" style="width:0%"></div></div>
+      <div class="card">
+        <div class="q-prompt" id="quiz-prompt"></div>
+        <div class="choices" id="quiz-choices"></div>
+        <div id="quiz-feedback"></div>
+      </div>
+      <button class="btn btn-primary" id="quiz-next" style="display:none" onclick="nextQuestion()">다음 문제</button>
+    </section>
+
+    <!-- 퀴즈 완료 -->
+    <section class="screen" id="quiz-done">
+      <div id="quiz-result"></div>
+    </section>
+
+    <!-- 발음 연습 -->
+    <section class="screen" id="pron">
+      <div class="card">
+        <div class="pron-word" id="pron-word"></div>
+        <div class="pron-meaning" id="pron-meaning"></div>
+        <div class="pron-example">
+          <div id="pron-ex"></div>
+          <div class="ko" id="pron-ex-ko"></div>
+        </div>
+        <button class="speak-btn" style="display:block;margin:0 auto 20px" onclick="speak(pronWord.ex)">🔊 원어민 발음 듣기</button>
+        <button class="mic-btn" id="mic-btn" onclick="listenPron()">🎤</button>
+        <div class="mic-hint">마이크를 누르고 위 예문을 읽어보세요</div>
+        <div id="pron-result"></div>
+      </div>
+      <button class="btn btn-ghost" onclick="startPron()">다른 단어 연습하기</button>
+    </section>
+
+    <!-- 단어장 -->
+    <section class="screen" id="wordbook">
+      <div class="section-title">전체 단어 (100개)</div>
+      <div id="word-list"></div>
+    </section>
+
+    <!-- 통계 -->
+    <section class="screen" id="stats">
+      <div id="stats-summary"></div>
+      <div class="section-title">단어 암기 단계</div>
+      <div class="card" id="stats-boxes"></div>
+      <div class="section-title">최근 7일 활동</div>
+      <div class="card"><div class="week-grid" id="stats-week"></div></div>
+    </section>
+  </div>
+
+  <!-- 하단 탭 -->
+  <nav class="tabbar">
+    <button class="tab active" data-target="home"><span class="icon">🏠</span>홈</button>
+    <button class="tab" data-target="wordbook"><span class="icon">📚</span>단어장</button>
+    <button class="tab" data-target="stats"><span class="icon">📊</span>통계</button>
+  </nav>
+
+  <script src="words.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // 인터넷에 올렸을 때(https) 홈 화면 설치·오프라인 사용이 가능하도록 등록
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
+      navigator.serviceWorker.register("sw.js");
+    }
+  </script>
+</body>
+</html>
